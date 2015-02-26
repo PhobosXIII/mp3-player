@@ -10,13 +10,20 @@ import com.squareup.okhttp.OkHttpClient;
 import com.squareup.okhttp.Request;
 import com.squareup.okhttp.Response;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
 
 public class DownloadService extends IntentService {
-    public static final String ACTION_LIST = "download_list";
+    public static final String ACTION_DOWNLOAD_LIST = "download_list";
+    public static final String ACTION_GET_LIST = "get_list";
+    public static final String LIST = "list";
 
     private static final String LIST_URL = "https://www.dropbox.com/s/78cvdhok80bfooo/list.txt?dl=1";
     private static final String LIST_NAME = "list.txt";
@@ -25,7 +32,7 @@ public class DownloadService extends IntentService {
     private static final String DIRECTORY = "MP3-player";
 
     public static void downloadList(Context context) {
-        downloadFile(context, ACTION_LIST, LIST_URL, LIST_NAME);
+        downloadFile(context, ACTION_DOWNLOAD_LIST, LIST_URL, LIST_NAME);
     }
 
     public static void downloadFile(Context context, String action, String fileUrl, String fileName) {
@@ -33,6 +40,12 @@ public class DownloadService extends IntentService {
         intent.setAction(action);
         intent.putExtra(FILE_URL, fileUrl);
         intent.putExtra(FILE_NAME, fileName);
+        context.startService(intent);
+    }
+
+    public static void getList(Context context) {
+        Intent intent = new Intent(context, DownloadService.class);
+        intent.setAction(ACTION_GET_LIST);
         context.startService(intent);
     }
 
@@ -44,30 +57,55 @@ public class DownloadService extends IntentService {
     protected void onHandleIntent(Intent intent) {
         if (intent != null) {
             final String action = intent.getAction();
-            final String fileUrl = intent.getStringExtra(FILE_URL);
-            final String fileName = intent.getStringExtra(FILE_NAME);
-            handleDownloading(fileUrl, fileName);
-            if (ACTION_LIST.equals(action)) {
-                Intent update = new Intent(ACTION_LIST);
+            if (ACTION_GET_LIST.equals(action)) {
+                ArrayList<String> urls = getUrls();
+                Intent update = new Intent(ACTION_GET_LIST);
+                update.putStringArrayListExtra(LIST, urls);
                 LocalBroadcastManager.getInstance(this).sendBroadcast(update);
+            }
+            else {
+                final String fileUrl = intent.getStringExtra(FILE_URL);
+                final String fileName = intent.getStringExtra(FILE_NAME);
+                handleDownloading(fileUrl, fileName);
             }
         }
     }
 
-    private void handleDownloading(String fileUrl, String fileName) {
-        OkHttpClient client = new OkHttpClient();
-        Request request = new Request.Builder()
-                .url(fileUrl)
-                .build();
-        Response response;
-        try {
-            response = client.newCall(request).execute();
-            File directory = new File(getDirPath());
-            if (!directory.exists()) {
-                directory.mkdirs();
+    private ArrayList<String> getUrls() {
+        ArrayList<String> urls = new ArrayList<>();
+        File file = new File(getDirPath() + "/" + LIST_NAME);
+        if (file.exists()) {
+            try {
+                InputStream is = new BufferedInputStream(new FileInputStream(file));
+                InputStreamReader input = new InputStreamReader(is);
+                BufferedReader reader = new BufferedReader(input);
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    urls.add(line);
+                }
+                is.close();
+
+            } catch (IOException e) {
+                e.printStackTrace();
+                return urls;
             }
-            File file = new File(directory + "/" + fileName);
-            if (!file.exists()) {
+        }
+        return urls;
+    }
+
+    private void handleDownloading(String fileUrl, String fileName) {
+        File directory = new File(getDirPath());
+        if (!directory.exists()) {
+            directory.mkdirs();
+        }
+        File file = new File(directory + "/" + fileName);
+        if (!file.exists()) {
+            OkHttpClient client = new OkHttpClient();
+            Request request = new Request.Builder()
+                    .url(fileUrl)
+                    .build();
+            try {
+                Response response = client.newCall(request).execute();
                 FileOutputStream fos = new FileOutputStream(file);
                 InputStream is = response.body().byteStream();
                 byte[] buffer = new byte[512];
@@ -77,9 +115,9 @@ public class DownloadService extends IntentService {
                 }
                 is.close();
                 fos.close();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 
