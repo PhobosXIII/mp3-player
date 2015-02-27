@@ -18,21 +18,41 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
 import java.util.ArrayList;
 
 public class DownloadService extends IntentService {
     public static final String ACTION_DOWNLOAD_LIST = "download_list";
     public static final String ACTION_GET_LIST = "get_list";
     public static final String LIST = "list";
+    public static final String ACTION_DOWNLOAD_SONG = "download_song";
+    public static final String FILE_URL = "file_url";
+    public static final String FILE_NAME = "file_name";
+    public static final String FILE_TITLE = "file_title";
 
     private static final String LIST_URL = "https://www.dropbox.com/s/78cvdhok80bfooo/list.txt?dl=1";
     private static final String LIST_NAME = "list.txt";
-    private static final String FILE_URL = "file_url";
-    private static final String FILE_NAME = "file_name";
     private static final String DIRECTORY = "MP3-player";
+
+    public static String getSongPath(String name) {
+        return getDirPath() + "/" + name;
+    }
 
     public static void downloadList(Context context) {
         downloadFile(context, ACTION_DOWNLOAD_LIST, LIST_URL, LIST_NAME);
+    }
+
+    public static void downloadSong(Context context, String url) {
+        int start = url.lastIndexOf("/") + 1;
+        int end = url.lastIndexOf("?");
+        String name = url.substring(start, end);
+        try {
+            name = URLDecoder.decode(name, "utf-8");
+        } catch (UnsupportedEncodingException e) {
+            e.printStackTrace();
+        }
+        downloadFile(context, ACTION_DOWNLOAD_SONG, url, name);
     }
 
     public static void downloadFile(Context context, String action, String fileUrl, String fileName) {
@@ -66,7 +86,15 @@ public class DownloadService extends IntentService {
             else {
                 final String fileUrl = intent.getStringExtra(FILE_URL);
                 final String fileName = intent.getStringExtra(FILE_NAME);
+                final String fileTitle = fileName;
                 handleDownloading(fileUrl, fileName);
+                if(ACTION_DOWNLOAD_SONG.equals(action)) {
+                    Intent update = new Intent(ACTION_DOWNLOAD_SONG);
+                    update.putExtra(FILE_URL, fileUrl);
+                    update.putExtra(FILE_NAME, fileName);
+                    update.putExtra(FILE_TITLE, fileTitle);
+                    LocalBroadcastManager.getInstance(this).sendBroadcast(update);
+                }
             }
         }
     }
@@ -121,7 +149,7 @@ public class DownloadService extends IntentService {
         }
     }
 
-    private String getDirPath() {
+    private static String getDirPath() {
         return Environment.getExternalStorageDirectory() + "/" + DIRECTORY;
     }
 }
