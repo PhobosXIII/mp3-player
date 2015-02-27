@@ -4,6 +4,9 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.net.Uri;
 import android.os.Bundle;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
@@ -20,6 +23,7 @@ import android.widget.ProgressBar;
 
 import com.getbase.floatingactionbutton.FloatingActionButton;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -49,12 +53,29 @@ public class MainActivity extends ActionBarActivity {
         private ProgressBar progressBar;
         private RecyclerView list;
         private FloatingActionButton fab;
+        private MediaPlayer mediaPlayer;
 
         private BroadcastReceiver listReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                ArrayList<String> songs = intent.getStringArrayListExtra(DownloadService.LIST);
+                ArrayList<String> urls = intent.getStringArrayListExtra(DownloadService.LIST);
+                ArrayList<Song> songs = new ArrayList<>();
+                for (String url : urls) {
+                    songs.add(new Song(url));
+                }
                 populate(songs);
+            }
+        };
+
+        private BroadcastReceiver songReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String fileName = intent.getStringExtra(DownloadService.FILE_NAME);
+                String songUrl = intent.getStringExtra(DownloadService.FILE_URL);
+                String songTitle = intent.getStringExtra(DownloadService.FILE_TITLE);
+                Song song = new Song(songUrl, fileName, songTitle);
+                ((SongAdapter)list.getAdapter()).set(song);
+
             }
         };
 
@@ -76,7 +97,15 @@ public class MainActivity extends ActionBarActivity {
             fab.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-
+                    if (mediaPlayer.isPlaying()) {
+                        fab.setIcon(R.drawable.ic_play_arrow_white_24dp);
+                        mediaPlayer.reset();
+                    }
+                    else {
+                        fab.setIcon(R.drawable.ic_stop_white_24dp);
+                        Song song = ((SongAdapter)list.getAdapter()).getSong(0);
+                        play(song);
+                    }
                 }
             });
         }
@@ -88,10 +117,18 @@ public class MainActivity extends ActionBarActivity {
         }
 
         @Override
+        public void onStart() {
+            super.onStart();
+            mediaPlayer = new MediaPlayer();
+        }
+
+        @Override
         public void onResume() {
             super.onResume();
-            IntentFilter ifActiveRoutes = new IntentFilter(DownloadService.ACTION_GET_LIST);
-            LocalBroadcastManager.getInstance(getActivity()).registerReceiver(listReceiver, ifActiveRoutes);
+            IntentFilter ifList = new IntentFilter(DownloadService.ACTION_GET_LIST);
+            LocalBroadcastManager.getInstance(getActivity()).registerReceiver(listReceiver, ifList);
+            IntentFilter ifSong = new IntentFilter(DownloadService.ACTION_DOWNLOAD_SONG);
+            LocalBroadcastManager.getInstance(getActivity()).registerReceiver(songReceiver, ifSong);
             DownloadService.getList(getActivity());
         }
 
@@ -99,14 +136,28 @@ public class MainActivity extends ActionBarActivity {
         public void onPause() {
             super.onPause();
             LocalBroadcastManager.getInstance(getActivity()).unregisterReceiver(listReceiver);
+            LocalBroadcastManager.getInstance(getActivity()).unregisterReceiver(songReceiver);
         }
 
         @Override
-        public void itemClicked(String song) {
-
+        public void onStop() {
+            super.onStop();
+            mediaPlayer.release();
+            mediaPlayer = null;
         }
 
-        private void populate(List<String> songs) {
+        @Override
+        public void itemClicked(Song song) {
+            play(song);
+            if (mediaPlayer.isPlaying()) {
+                fab.setIcon(R.drawable.ic_stop_white_24dp);
+            }
+            else {
+                fab.setIcon(R.drawable.ic_play_arrow_white_24dp);
+            }
+        }
+
+        private void populate(List<Song> songs) {
             progressBar.setVisibility(View.GONE);
             list.setVisibility(View.VISIBLE);
             fab.setVisibility(View.VISIBLE);
@@ -118,6 +169,23 @@ public class MainActivity extends ActionBarActivity {
             list.addItemDecoration(divider);
             SongAdapter adapter = new SongAdapter(songs, this);
             list.setAdapter(adapter);
+
+            for(Song song : songs) {
+                DownloadService.downloadSong(getActivity(), song.getUrl());
+            }
+        }
+
+        private void play(Song song) {
+            mediaPlayer.reset();
+            Uri uri = Uri.parse(DownloadService.getSongPath(song.getFileName()));
+            mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+            try {
+                mediaPlayer.setDataSource(getActivity(), uri);
+                mediaPlayer.prepare();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            mediaPlayer.start();
         }
     }
 }
