@@ -3,8 +3,12 @@ package com.example.phobos.mp3_player;
 import android.app.IntentService;
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Environment;
+import android.provider.MediaStore;
 import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 
 import com.squareup.okhttp.OkHttpClient;
 import com.squareup.okhttp.Request;
@@ -86,9 +90,9 @@ public class DownloadService extends IntentService {
             else {
                 final String fileUrl = intent.getStringExtra(FILE_URL);
                 final String fileName = intent.getStringExtra(FILE_NAME);
-                final String fileTitle = fileName;
                 handleDownloading(fileUrl, fileName);
-                if(ACTION_DOWNLOAD_SONG.equals(action)) {
+                if (ACTION_DOWNLOAD_SONG.equals(action)) {
+                    final String fileTitle = getSongTitle(fileName);
                     Intent update = new Intent(ACTION_DOWNLOAD_SONG);
                     update.putExtra(FILE_URL, fileUrl);
                     update.putExtra(FILE_NAME, fileName);
@@ -143,6 +147,7 @@ public class DownloadService extends IntentService {
                 }
                 is.close();
                 fos.close();
+                sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, Uri.fromFile(file)));
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -151,5 +156,26 @@ public class DownloadService extends IntentService {
 
     private static String getDirPath() {
         return Environment.getExternalStorageDirectory() + "/" + DIRECTORY;
+    }
+
+    private String getSongTitle(String fileName) {
+        String title = null;
+
+        Uri media = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+        String[] projection = {MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.TITLE};
+        String selection = MediaStore.Audio.Media.DATA + " LIKE ?";
+
+        Cursor cursor = getContentResolver().query( media,
+                projection,
+                selection,
+                new String[] {"%" + fileName + "%"},
+                null);
+        if (cursor != null && cursor.moveToFirst()) {
+            Log.d("META", String.valueOf(cursor.getCount()));
+            title = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.TITLE));
+            Log.d("META", title);
+            cursor.close();
+        }
+        return title;
     }
 }

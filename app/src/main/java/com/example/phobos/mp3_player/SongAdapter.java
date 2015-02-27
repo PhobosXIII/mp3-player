@@ -8,6 +8,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import java.io.File;
 import java.util.List;
 
 public class SongAdapter extends RecyclerView.Adapter<SongAdapter.ViewHolder> {
@@ -52,7 +53,13 @@ public class SongAdapter extends RecyclerView.Adapter<SongAdapter.ViewHolder> {
             holder.title.setText(song.getTitle());
         }
         else {
-            holder.title.setText(song.getUrl());
+            File file = new File(DownloadService.getSongPath(song.getFileName()));
+            if (file.exists()) {
+                holder.title.setText(song.getFileName());
+            }
+            else {
+                holder.title.setText(song.getUrl());
+            }
         }
         holder.setOnClickListener(new View.OnClickListener() {
             @Override
